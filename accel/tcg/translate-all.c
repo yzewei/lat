@@ -1974,6 +1974,7 @@ TranslationBlock *tb_gen_code(CPUState *cpu,
 #ifndef CONFIG_LATX
  tb_overflow:
 #else
+ latx_tb_overflow:
     tb->bool_flags = OPT_BCC;
     tb->s_data->_top_out = -1;
     tb->s_data->_top_in = -1;
@@ -2202,16 +2203,29 @@ TranslationBlock *tb_gen_code(CPUState *cpu,
 #endif
     gen_code_size = target_latx_host(env, tb, max_insns);
     if (unlikely(gen_code_size < 0)) {
-        /*
-         * Overflow of code_gen_buffer, or the current slice of it.
-         *
-         * TODO: We don't need to re-do gen_intermediate_code, nor
-         * should we re-do the tcg optimization currently hidden
-         * inside tcg_gen_code.  All that should be required is to
-         * flush the TBs, allocate a new TB, re-initialize it per
-         * above, and re-do the actual code generation.
-         */
-        goto buffer_overflow;
+        switch (gen_code_size) {
+        case -1:
+            /*
+             * Overflow of code_gen_buffer, or the current slice of it.
+             *
+             * TODO: We don't need to re-do gen_intermediate_code, nor
+             * should we re-do the tcg optimization currently hidden
+             * inside tcg_gen_code.  All that should be required is to
+             * flush the TBs, allocate a new TB, re-initialize it per
+             * above, and re-do the actual code generation.
+             */
+            goto buffer_overflow;
+        case -2:
+            if (max_insns <= 2) {
+                error_report("LATX: a single guest instruction "
+                             "generates an oversized TB");
+                abort();
+            }
+            max_insns /= 2;
+            goto latx_tb_overflow;
+        default:
+            g_assert_not_reached();
+        }
     }
 
     if (gen_code_size == 0) {

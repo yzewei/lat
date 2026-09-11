@@ -396,6 +396,12 @@ int label_dispose(TranslationBlock *tb, TRANSLATION_DATA *lat_ctx)
         ir2_current = ir2_next(ir2_current);
     }
 
+    /* Reject oversized TBs before narrowing code offsets to uint16_t. */
+    size_t code_size = (size_t)ir2_num * sizeof(uint32_t);
+    if (tb && code_size > UINT16_MAX) {
+        return -2;
+    }
+
     /**
      * 2. resolve the offset of successor linkage code
      *
@@ -2575,6 +2581,10 @@ int tr_translate_tb(struct TranslationBlock *tb)
 
         /* label dispose */
         code_nr = label_dispose(tb, lat_ctx);
+        if (unlikely(code_nr < 0)) {
+            tr_fini(false);
+            return code_nr;
+        }
         /* check if buffer is overflow */
         if (tb->tc.ptr + (code_nr << 2) >
             tcg_ctx->code_gen_buffer + tcg_ctx->code_gen_buffer_size) {
